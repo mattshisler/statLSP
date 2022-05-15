@@ -19,13 +19,12 @@ double_logistic <- function(t,theta){
     out <- expit(theta[1]) + theta[2]*out
   } else if (length(theta)==7){
     # w/  greendown parameter
-    out <- expit(theta[1]) + (theta[2]-theta[7]*t)*out
+    out <- expit(theta[1]) + (theta[2]-expit(theta[7])*t)*out
     
   }
   
   return(out)
 }
-
 
 # construct the basis functions for the model. These are created using the
 # gradient of the double logistic function with respect to the theta vector.
@@ -52,6 +51,95 @@ basis_functions <- function(t,theta){
   
   return(B)
 }
+
+sim_evi2 <- function(sim_theta_mu, sim_theta_var, sigma=0.05, nyear=20,
+                     min_obs=25, max_obs=25){
+  # number of parameters
+  npar <- length(sim_theta_mu)
+  nnoiselvl <- length(sigma)
+  # nyear   <- 20
+  # min_obs <- 25
+  # max_obs <- 25
+  
+  # sample for number of observations per year
+  if (min_obs==max_obs){
+    obs_samp <- rep(min_obs,2)
+  } else {
+    obs_samp <- min_obs:max_obs
+  }
+  nobs <- sample(x=obs_samp, size=nyear, replace = T)
+  
+  # initialize data objects
+  theta <- matrix(NA, nrow=nyear, ncol=npar)
+  data  <- vector(mode="list", length=nyear)
+  names(data) <- paste0("year",1:nyear)
+  
+  # sample from evi2 curve (double logistic model)
+  for (i in 1:nyear){
+    # allocate matrix object
+    temp     <- data.frame(matrix(NA, nrow=nobs[i],ncol=2+nnoiselvl))
+    
+    # draw theta vector for year
+    theta[i,] <- rnorm(npar,sim_theta_mu, sqrt(sim_theta_var))
+    
+    # draw observations and true evi2 value
+    temp[,1] <- runif(nobs[i],1,365)
+    temp[,2] <- double_logistic(temp[,1], theta[i,])
+    
+    # for each level of noise specified in sigma, generate
+    # a new column with Gaussian error
+    for (k in 1:nnoiselvl){
+      temp[,(k+2)] <- pmax(rnorm(nobs[i],temp[,2],sigma[k]),0)
+    }
+    colnames(temp) <- c("t", "y_true", paste0("y_noise", 1:nnoiselvl))
+    
+    data[[i]] <- temp
+  }
+  
+  return(list(theta=theta, data=data))
+}
+
+# plot evi2 in two modes:
+# "parallel" - Year over year
+# "serial"   - 
+plot_evi2 <- function(sim, mode="parallel"){
+  
+  nyear <- length(sim$data)
+  
+  if (mode=="parallel"){
+    plot(NA,xlim=c(1,365),ylim=c(0,1.2),xlab="t(DOY)",ylab="EVI2")
+    for(k in 1:nyear){  
+      points(sim$data[[k]]$t,sim$data[[k]][[3]], pch=19,col=k)
+      lines(1:365, double_logistic(1:365,sim$theta[k,]), lwd=2, col=k)
+    }
+  } else {
+    plot(NA,xlim=c(1,365*nyear),ylim=c(0,1.2),xlab="t(DOY)",ylab="EVI2")
+    for(k in 1:nyear){  
+      points(sim$data[[k]]$t+(k-1)*365,sim$data[[k]][[3]], pch=19,col=k)
+      lines((1:365)+(k-1)*365, double_logistic(1:365,sim$theta[k,]), lwd=2, col=k)
+    }
+  }
+  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
