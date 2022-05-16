@@ -40,7 +40,7 @@ B <- basis_functions(1:365, avg_model_theta)
 matplot(B, type = "l")
 
 
-# MCMC for the hierarchical model
+# MCMC for the hierarchical model (IN-PROGRESS)
 
 # priors
 Sigma <- 100*diag(npar)
