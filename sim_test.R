@@ -43,40 +43,44 @@ matplot(B, type = "l")
 # MCMC for the hierarchical model (IN-PROGRESS)
 
 # priors
-Sigma <- 100*diag(npar)
-Q     <- solve(Sigma)
-
-
-
-DL_m  <- double_logistic(floor(sim$data$year1$t), avg_model_theta)
+# Sigma <- diag(npar)
+# Q     <- solve(Sigma)
+Sigma <-  
 tau   <- 1/sigma^2
+T0    <- 1
+D0    <- 0.1
+  
+DL_m  <- double_logistic(floor(sim$data$year1$t), avg_model_theta)
 X     <- B[floor(sim$data$year1$t),]
-y     <- sim$data$year1$y_noise1
+y     <- sim$data$year1$y_noise1-DL_m
 
-# sample basis function coefficients
-cov_b     <- solve(tau*t(X)%*%X + Q)
-mn_b      <- tau*cov_b%*%t(X)%*%(y-DL_m)
-samps_b   <- t(chol(cov_b))%*%rnorm(npar)
+iters <- 1000
+keep_param <- matrix(NA, nrow=iters, ncol=npar+1)
 
-# compute theta sample
-theta_hat <- avg_model_theta + mn_b + samps_b
+for (i in 1:iters){
+  # sample basis function coefficients
+  V <- solve(tau*t(X)%*%X + Q)
+  M <- tau*V%*%t(X)%*%(y-DL_m)
+  b <- as.numeric(rmvnorm(1,M,V))
+  
+  # sample sigma
+  resid <- (y-DL_m-X%*%b)
+  T1    <- T0 + npar
+  D1    <- D0 + t(resid)%*%resid
+  tau <- rgamma(1,T1,D1)
+    
+  # compute theta sample
+  theta_hat <- avg_model_theta + b
+  
+  # store samples
+  keep_param[i,] <- c(theta_hat, sqrt(1/tau))
+}
 
-
-# sample from theta population distribution
-
-
-# sample from 
-
-
-
-
-r <- sim$data$year1$y_noise1-double_logistic(sim$data$year1$t,avg_model_theta)
-X <- B[floor(sim$data$year1$t),]
-
-
-b <- lm(r ~ X-1)
-b$coefficients + avg_model_theta
+apply(keep_param, 2, function(x) quantile(x, c(0.025,0.975)))
+colMeans(keep_param)
 sim$theta[1,]
+
+
 
 
 
