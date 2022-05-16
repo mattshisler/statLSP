@@ -1,3 +1,5 @@
+library(minpack.lm)
+
 # equivalent to plogis with m=0 & s=1.
 expit   <- function(x){1/(1+exp(-x))}
 
@@ -107,13 +109,13 @@ plot_evi2 <- function(sim, mode="parallel"){
   nyear <- length(sim$data)
   
   if (mode=="parallel"){
-    plot(NA,xlim=c(1,365),ylim=c(0,1.2),xlab="t(DOY)",ylab="EVI2")
+    plot(NA,xlim=c(1,365),ylim=c(0,1.1),xlab="t(DOY)",ylab="EVI2")
     for(k in 1:nyear){  
       points(sim$data[[k]]$t,sim$data[[k]][[3]], pch=19,col=k)
       lines(1:365, double_logistic(1:365,sim$theta[k,]), lwd=2, col=k)
     }
-  } else {
-    plot(NA,xlim=c(1,365*nyear),ylim=c(0,1.2),xlab="t(DOY)",ylab="EVI2")
+  } else if (mode=="serial"){
+    plot(NA,xlim=c(1,365*nyear),ylim=c(0,1.1),xlab="t(DOY)",ylab="EVI2")
     for(k in 1:nyear){  
       points(sim$data[[k]]$t+(k-1)*365,sim$data[[k]][[3]], pch=19,col=k)
       lines((1:365)+(k-1)*365, double_logistic(1:365,sim$theta[k,]), lwd=2, col=k)
@@ -122,11 +124,28 @@ plot_evi2 <- function(sim, mode="parallel"){
   
 }
 
+avg_fit <- function(sim_agg){
 
+  model_equ <- as.formula("y ~ 1/(1+exp(-theta1)) + (theta2) * 
+                          ((1 / (1 + exp((theta3 - t) / theta4))) - 
+                          (1 / (1 + exp((theta5 - t) / theta6))))")
 
+  # fit using non-linear least squares
+  fit <- nlsLM(model_equ,
+               data = list(y = sim_agg$y_noise1,
+                           t = sim_agg$t),
+               weights = rep(1, nrow(sim_agg)),
+               start = list(theta1 = -2,
+                            theta2 = 1,
+                            theta3 = 120,
+                            theta4 = 6,
+                            theta5 = 290,
+                            theta6 = 8),
+               lower = c(-10, 0.1, 1, 0, 185, 0),
+               upper = c(10, 100, 185, 100, 370, 100))
 
-
-
+  return(fit)
+}
 
 
 
