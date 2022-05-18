@@ -125,7 +125,8 @@ plot_evi2 <- function(sim, mode="parallel"){
 }
 
 avg_fit <- function(sim_agg){
-
+  require(minpack.lm)
+  
   model_equ <- as.formula("y ~ 1/(1+exp(-theta1)) + (theta2) * 
                           ((1 / (1 + exp((theta3 - t) / theta4))) - 
                           (1 / (1 + exp((theta5 - t) / theta6))))")
