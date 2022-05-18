@@ -13,18 +13,19 @@ sim_theta_var6 <- c( 0.01, 1e-3,  25, 1,  25, 1)
 
 npar    <- 6
 sigma   <- 0.05
-nyear   <- 20
-min_obs <- 25
+nyear   <- 10
+min_obs <- 5
 max_obs <- 25
 
 # simulate the evi2 data
 sim <- sim_evi2(sim_theta_mu6, sim_theta_var6, 
                 sigma=sigma, nyear=nyear,
                 min_obs = min_obs, max_obs = max_obs)
+summary(sim$theta)
 
 # plot the simulated evi2 curves
 plot_evi2(sim, "parallel")
-plot_evi2(sim, "serial")
+# plot_evi2(sim, "serial")
 
 # create aggregated data set
 sim_agg <- do.call(rbind, sim$data)
@@ -51,18 +52,46 @@ tau   <- 1/sigma^2
 T0    <- 1
 D0    <- 0.1
 
-year  <- 2
-DL_m  <- double_logistic(floor(sim$data[[year]]$t), avg_model_theta)
-X     <- B[floor(sim$data[[2]]$t),]
-y     <- sim$data[[2]]$y_noise1-DL_m
+theta_hat <- theta_lower <- theta_upper <- sim$theta
+
+for (year in 1:nyear){
+
+  DL_m  <- double_logistic(floor(sim$data[[year]]$t), avg_model_theta)
+  X     <- B[floor(sim$data[[year]]$t),]
+  y     <- sim$data[[year]]$y_noise1-DL_m
+
+  V <- solve(tau*t(X)%*%X + Q)
+  M <- tau*V%*%t(X)%*%(y)
+
+  theta_hat[year,]   <- avg_model_theta + as.numeric(M)
+  theta_lower[year,] <- qnorm(0.025, mean=theta_hat[year,], sd=sqrt(diag(V)))
+  theta_upper[year,] <- qnorm(0.975, mean=theta_hat[year,], sd=sqrt(diag(V)))
+}
+
+coverage <- theta_lower<sim$theta & theta_upper>sim$theta
+colSums(coverage)/nyear
+
+
+
+
+
+plot(1:365, double_logistic(1:365, sim$theta[year,]), type="l")
+lines(1:365, double_logistic(1:365, theta_hat[year,]))
+lines(1:365, double_logistic(1:365, theta_upper[year,]))
+lines(1:365, double_logistic(1:365, theta_lower[year,]))
+
 
 iters <- 5000
 keep_param <- matrix(NA, nrow=iters, ncol=npar+1)
 
+DL_m  <- double_logistic(floor(sim$data[[year]]$t), avg_model_theta)
+X     <- B[floor(sim$data[[year]]$t),]
+y     <- sim$data[[year]]$y_noise1-DL_m
+
 for (i in 1:iters){
   # sample basis function coefficients
   V <- solve(tau*t(X)%*%X + Q)
-  M <- tau*V%*%t(X)%*%(y-DL_m)
+  M <- tau*V%*%t(X)%*%(y)
   b <- as.numeric(rmvnorm(1,M,V))
   
   # sample sigma
@@ -70,21 +99,30 @@ for (i in 1:iters){
   T1    <- T0 + npar
   D1    <- D0 + t(resid)%*%resid
   tau <- rgamma(1,T1,D1)
-    
-  # compute theta sample
-  theta_hat <- avg_model_theta + b
   
   # store samples
-  keep_param[i,] <- c(theta_hat, sqrt(1/tau))
+  keep_param[i,] <- c(avg_model_theta + b, sqrt(1/tau))
 }
 
-apply(keep_param, 2, function(x) quantile(x, c(0.975,0.025)))
+
+sim$theta[year,]
+colMeans(keep_param)
+apply(keep_param,2,function(x) quantile(x,0.025))
+apply(keep_param,2,function(x) quantile(x,0.975))
+
+theta_hat[nyear,]
+theta_lower[nyear,]
+theta_upper[nyear,]
+
+
+
+apply(keep_param, 2, function(x) quantile(x, c(0.975,0.5,0.025)))
 colMeans(keep_param)
 sim$theta[2,]
 
 hist(keep_param[,1])
 
-
+M+avg_model_theta
 
 
 
