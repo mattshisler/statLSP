@@ -33,28 +33,30 @@ sim_agg <- do.call(rbind, sim$data)
 # uses the nlsLM function of the minpack.lm package
 avg_model_over_years <- avg_fit(sim_agg = sim_agg)
 avg_model_theta <- coef(avg_model_over_years)
+avg_model_vcov  <- vcov(avg_model_over_years)
 avg_model_sigma <- sigma(avg_model_over_years)
 
 # construct the basis functions from the 1st-order Taylor approx
 B <- basis_functions(1:365, avg_model_theta)
 matplot(B, type = "l")
 
-
 # MCMC for the hierarchical model (IN-PROGRESS)
 
 # priors
 # Sigma <- diag(npar)
-# Q     <- solve(Sigma)
-Sigma <-  
+Sigma <- diag(sim_theta_var6)
+# Sigma   <- 10*avg_model_vcov
+Q     <- solve(Sigma)
 tau   <- 1/sigma^2
 T0    <- 1
 D0    <- 0.1
-  
-DL_m  <- double_logistic(floor(sim$data$year1$t), avg_model_theta)
-X     <- B[floor(sim$data$year1$t),]
-y     <- sim$data$year1$y_noise1-DL_m
 
-iters <- 1000
+year  <- 2
+DL_m  <- double_logistic(floor(sim$data[[year]]$t), avg_model_theta)
+X     <- B[floor(sim$data[[2]]$t),]
+y     <- sim$data[[2]]$y_noise1-DL_m
+
+iters <- 5000
 keep_param <- matrix(NA, nrow=iters, ncol=npar+1)
 
 for (i in 1:iters){
@@ -76,9 +78,11 @@ for (i in 1:iters){
   keep_param[i,] <- c(theta_hat, sqrt(1/tau))
 }
 
-apply(keep_param, 2, function(x) quantile(x, c(0.025,0.975)))
+apply(keep_param, 2, function(x) quantile(x, c(0.975,0.025)))
 colMeans(keep_param)
-sim$theta[1,]
+sim$theta[2,]
+
+hist(keep_param[,1])
 
 
 
