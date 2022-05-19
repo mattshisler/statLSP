@@ -1,5 +1,3 @@
-library(minpack.lm)
-
 # equivalent to plogis with m=0 & s=1.
 expit   <- function(x){1/(1+exp(-x))}
 
@@ -38,7 +36,7 @@ basis_functions <- function(t,theta){
   # returns 6 or 7 parameter version depending on the length
   # of the theta vector
   if(length(theta)==6){
-    B1  <-  1
+    B1  <-  expit_p(theta[1])
     B2  <-  dl0/theta[2]
     B3  <- -(theta[2]*exp((theta[3] + t)/theta[4]))/
             (theta[4]*(exp(theta[3]/theta[4]) + exp(t/theta[4]))^2)
@@ -49,6 +47,18 @@ basis_functions <- function(t,theta){
     B6  <- -(theta[2]*(theta[5]-t)*exp((theta[5]+t)/theta[6]))/
             ((theta[6]^2)*(exp(theta[5]/theta[6])+exp(t/theta[6]))^2)
     B   <-  cbind(B1,B2,B3,B4,B5,B6)
+  } else if (length(theta)==7){
+    a <- expit_p(theta[7])
+    theta[7] <- expit(theta[7])
+    
+    B1 <- expit_p(theta[1])
+    B2 <- (1/(1+exp((theta[3]-t)/theta[4])))-(1/(1+exp((theta[5]-t)/theta[6])))
+    B3 <- (theta[7]*t - theta[2])/(2*theta[4]*cosh((theta[3]-t)/theta[4])+2*theta[4])
+    B4 <- ((theta[3] - t)*(theta[2]-theta[7]*t)*cosh((theta[3]-t)/(2*theta[4]))^(-2))/(4*theta[4]^2)
+    B5 <- (theta[2] - theta[7]*t)/(2*theta[6]*cosh((theta[5]-t)/theta[6])+2*theta[6])
+    B6 <- ((theta[5] - t)*(theta[7]*t-theta[2])*cosh((theta[5]-t)/(2*theta[6]))^(-2))/(4*theta[6]^2)
+    B7 <- -t*a*((1/(1+exp((theta[3]-t)/theta[4])))-(1/(1+exp((theta[5]-t)/theta[6]))))
+    B <- cbind(B1, B2, B3, B4, B5, B6, B7)
   }
   
   return(B)
@@ -104,10 +114,15 @@ sim_evi2 <- function(sim_theta_mu, sim_theta_var, sigma=0.05, nyear=20,
 # plot evi2 in two modes:
 # "parallel" - Year over year
 # "serial"   - 
-plot_evi2 <- function(sim, mode="parallel"){
+plot_evi2 <- function(sim, mode="parallel", frac=0.1){
   
-  nyear <- length(sim$data)
+  samps <- sample(1:length(sim$data), floor(frac*length(sim$data)))
   
+  nyear <- floor(frac*length(sim$data))
+  sim$data  <- sim$data[samps]
+  sim$theta <- sim$theta[samps,]
+  
+
   if (mode=="parallel"){
     plot(NA,xlim=c(1,365),ylim=c(0,1.1),xlab="t(DOY)",ylab="EVI2")
     for(k in 1:nyear){  
@@ -124,43 +139,50 @@ plot_evi2 <- function(sim, mode="parallel"){
   
 }
 
-avg_fit <- function(sim_agg){
+avg_fit <- function(sim_agg, npar){
   require(minpack.lm)
   
-  # six parameter model
-  model_equ <- as.formula("y ~ 1/(1+exp(-theta1)) + (theta2) * 
-                          ((1 / (1 + exp((theta3 - t) / theta4))) - 
-                          (1 / (1 + exp((theta5 - t) / theta6))))")
-
-  # fit using non-linear least squares
-  fit <- nlsLM(model_equ,
-               data = list(y = sim_agg$y_noise1,
-                           t = sim_agg$t),
-               weights = rep(1, nrow(sim_agg)),
-               start = list(theta1 = -2,
-                            theta2 = 1,
-                            theta3 = 120,
-                            theta4 = 6,
-                            theta5 = 290,
-                            theta6 = 8),
-               lower = c(-10, 0.1, 1, 0, 185, 0),
-               upper = c(10, 100, 185, 100, 370, 100))
-
+  if (npar==6){
+    # six parameter model
+    model_equ <- as.formula("y ~ 1/(1+exp(-theta1)) + (theta2) *
+                            ((1 / (1 + exp((theta3 - t) / theta4))) -
+                            (1 / (1 + exp((theta5 - t) / theta6))))")
+  
+    # fit using non-linear least squares
+    fit <- nlsLM(model_equ,
+                 data = list(y = sim_agg$y_noise1,
+                             t = sim_agg$t),
+                 weights = rep(1, nrow(sim_agg)),
+                 start = list(theta1 = -2,
+                              theta2 = 1,
+                              theta3 = 120,
+                              theta4 = 6,
+                              theta5 = 290,
+                              theta6 = 8),
+                 lower = c(-10, 0.1, 1, 0, 185, 0),
+                 upper = c(10, 100, 185, 100, 370, 100))
+  } else if (npar==7){
+    model_equ <- as.formula("y ~ 1/(1+exp(-theta1)) + 
+                            (theta2-(1/(1+exp(-theta7)))*t) *
+                            ((1 / (1 + exp((theta3 - t) / theta4))) -
+                            (1 / (1 + exp((theta5 - t) / theta6))))")
+    
+    fit <- nlsLM(model_equ,
+                 data = list(y = sim_agg$y_noise1,
+                             t = sim_agg$t),
+                 weights = rep(1, nrow(sim_agg)),
+                 start = list(theta1 = -2,
+                              theta2 = 1,
+                              theta3 = 120,
+                              theta4 = 6,
+                              theta5 = 290,
+                              theta6 = 8,
+                              theta7 = -7),
+                 lower = c(-10, 0.1, 1, 0, 185, 0, -10),
+                 upper = c(10, 100, 185, 100, 370, 100, 10))
+    
+  }
   return(fit)
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

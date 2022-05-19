@@ -1,0 +1,139 @@
+---
+title: "LSP Bayesian Regression on Linearized Double-logistic LSP"
+author: "Matthew Shisler"
+date: '2022-05-19'
+output: html_document
+---
+
+```{r}
+source("utility_functions.R")
+```
+
+We will attempt to understand that effects of applying a Bayesian linear
+regression on the linearization (wrt to the parameter vector, \(\theta\)) of the
+double logistic function.
+
+This simulation will involve different levels of three factors.
+1) The magnitude of variation for each element of \(\theta\). (3 levels)
+2) The magnitude of the "measurement noise" or error variance, \(\sigma^2\). (2 levels)
+3) The number of observations per year. (3 levels)
+
+```{r}
+sim_theta_mu  <- c(-1.80, 0.75, 120, 8, 290, 8, -7.750)
+
+npar    <- length(sim_theta_mu)
+sigma   <- c(0.05, 0.1)
+nyear   <- 1000
+nobs <- c(5,15,30)
+
+sim_theta_var <- matrix(c( 0.01, 1e-5,  10, 1,  10, 1,  0.05,
+                           0.04, 1e-4,  25, 2,  25, 2,  0.1,
+                           0.08, 1e-3,  60, 4,  60, 4,  0.2),
+                        nrow=3, ncol=npar, byrow=TRUE)
+
+total_combos <- length(sigma)*length(nobs)*nrow(sim_theta_var)
+coverages    <- data.frame(matrix(NA, nrow=total_combos, ncol=npar+3))
+names(coverages) <- c(paste0("theta", 1:npar), "noise_level", "nobs_level", "theta_var_level")
+
+sos_ci_widths <- matrix(NA, nrow=nyear,ncol=total_combos)
+eos_ci_widths <- matrix(NA, nrow=nyear,ncol=total_combos)
+
+sos_devs <- matrix(NA, nrow=nyear,ncol=total_combos)
+eos_devs <- matrix(NA, nrow=nyear,ncol=total_combos)
+
+low_high     <- c("low", "high")
+low_med_high <- c("low", "med", "high")
+
+index = 1
+for(k in 1:2){
+  for(j in 1:3){
+    for(i in 1:3){
+      # simulate the data
+      sim <- sim_evi2(sim_theta_mu, sim_theta_var[i,], 
+                      sigma=sigma[k], nyear=nyear,
+                      min_obs = nobs[j], max_obs = nobs[j])
+      
+      # plot a fraction of the simualted datasets
+      plot_evi2(sim, "parallel", frac=0.1)
+      
+      # create aggregated data set from % sample of simulated years
+      sampled_years <- sample(nyear,floor(1*nyear))
+      sim_agg <- do.call(rbind, sim$data[sampled_years])
+      
+      # construct average model by combining data over years (frequentist non-lin)
+      # uses the nlsLM function of the minpack.lm package
+      avg_model_over_years <- avg_fit(sim_agg = sim_agg, npar = npar)
+      avg_model_theta <- coef(avg_model_over_years)
+      
+      # construct the basis functions from the 1st-order Taylor approx
+      B <- basis_functions(1:365, avg_model_theta)
+      # matplot(B, type = "l")
+      # matplot(scale(B), type = "l")
+      
+      # priors 
+      # In this idealized case we assume to know the residual variance and theta
+      # covariance.
+      V   <- diag(sim_theta_var[i,])
+      Q   <- solve(V)
+      tau <- 1/sigma[k]^2
+      
+      # store results
+      theta_hat <- theta_hat_lower <- theta_hat_upper <- sim$theta
+      
+      for (year in 1:nyear){
+        
+        # construct response and covariate matrix for bayesian regression
+        DL_m  <- double_logistic(floor(sim$data[[year]]$t), sim_theta_mu)
+        X     <- B[floor(sim$data[[year]]$t),]
+        y     <- sim$data[[year]]$y_noise1-DL_m
+      
+        # compure posterior mean and covariance
+        V <- solve(tau*t(X)%*%X + Q)
+        M <- tau*V%*%t(X)%*%(y)
+      
+        # estimate theta and 95% credible interval
+        theta_hat[year,]       <- avg_model_theta + as.numeric(M)
+        theta_hat_lower[year,] <- qnorm(.025, mean=theta_hat[year,], sd=sqrt(diag(V)))
+        theta_hat_upper[year,] <- qnorm(.975, mean=theta_hat[year,], sd=sqrt(diag(V)))
+      }
+      
+      # check if true theta lies within the credible interval
+      coverage <- theta_hat_lower<sim$theta & theta_hat_upper>sim$theta
+      coverages[index,] <- c(colSums(coverage)/nyear, low_high[k], nobs[j], low_med_high[i])
+      
+      # record the widths of the CIs
+      sos_ci_widths[,index] <- theta_hat_upper[,3]-theta_hat_lower[,3]
+      eos_ci_widths[,index] <- theta_hat_upper[,5]-theta_hat_lower[,5]
+      
+      #record the estimated-true value deviation of sos and eos
+      sos_devs[,index] <- theta_hat[,3] - sim$theta[,3]
+      eos_devs[,index] <- theta_hat[,5] - sim$theta[,5]
+      index=index+1
+    }
+  }
+}
+```
+
+```{r}
+coverages[,c(1:4,8:10)]
+coverages[,c(5:7,8:10)]
+boxplot(sos_ci_widths)
+boxplot(eos_ci_widths)
+
+boxplot(sos_devs)
+boxplot(eos_devs)
+
+```
+
+```{r}
+ggplot(data=coverages) +
+  geom_point(aes(x=theta_var_level, y=theta3, color=nobs_level))+
+  geom_line(aes(x=theta_var_level, y=theta3))+
+  facet_grid(~noise_level)
+
+ggplot(data=coverages) +
+  geom_point(aes(x=theta_var_level, y=theta5, color=nobs_level))+
+  geom_line(aes(x=theta_var_level, y=theta5))+
+  facet_grid(~noise_level)
+```
+
