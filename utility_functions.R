@@ -185,4 +185,22 @@ avg_fit <- function(sim_agg, npar){
   return(fit)
 }
 
+reformat_sim_data <- function(perf_matrix){
+  
+  result <- data.frame(perf_matrix) %>%
+    gather() %>%
+    mutate(noise_level = factor(rep(low_high, each=nyear*3*3), levels=low_high)) %>%
+    mutate(num_obs = factor(rep(nobs,2,each=nyear*3), levels=nobs)) %>%
+    mutate(theta_var_level = factor(rep(low_med_high, 2*3, each=nyear), levels = low_med_high)) %>%
+    select(-key)
+  
+  return(result)
+}
+
+facet_labels <- list("low"="error variance - low",
+                          "high"="error variance - high")
+
+quick_facet_labeller <- function(variable, value){
+  return(facet_labels[value])
+}
 
